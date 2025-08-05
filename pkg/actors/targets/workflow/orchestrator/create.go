@@ -17,6 +17,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/dapr/durabletask-go/api"
 	"github.com/dapr/durabletask-go/backend"
 	"github.com/dapr/durabletask-go/backend/runtimestate"
+	"github.com/dapr/kit/ptr"
 )
 
 func (o *orchestrator) createWorkflowInstance(ctx context.Context, request []byte) error {
@@ -38,9 +40,19 @@ func (o *orchestrator) createWorkflowInstance(ctx context.Context, request []byt
 		return errors.New("invalid execution start event")
 	} else {
 		if es.GetParentInstance() == nil {
-			log.Debugf("Workflow actor '%s': creating workflow '%s' with instanceId '%s'", o.actorID, es.GetName(), es.GetOrchestrationInstance().GetInstanceId())
+			log.Debugf("Workflow actor '%s': creating workflow '%s' with instanceId '%s'",
+				o.actorID,
+				es.GetName(),
+				es.GetOrchestrationInstance().GetInstanceId(),
+			)
 		} else {
-			log.Debugf("Workflow actor '%s': creating child workflow '%s' with instanceId '%s' parentWorkflow '%s' parentWorkflowId '%s'", es.GetName(), es.GetOrchestrationInstance().GetInstanceId(), es.GetParentInstance().GetName(), es.GetParentInstance().GetOrchestrationInstance().GetInstanceId())
+			log.Debugf("Workflow actor '%s': creating child workflow '%s' with instanceId '%s' parentWorkflow '%s' parentWorkflowId '%s'",
+				o.actorID,
+				es.GetName(),
+				es.GetOrchestrationInstance().GetInstanceId(),
+				es.GetParentInstance().GetName(),
+				es.GetParentInstance().GetOrchestrationInstance().GetInstanceId(),
+			)
 		}
 	}
 
@@ -109,10 +121,17 @@ func (o *orchestrator) scheduleWorkflowStart(ctx context.Context, startEvent *ba
 		return err
 	}
 
+	defer o.ometaBroadcaster.Broadcast(o.ometa)
+
+	var start *time.Time
+	if ts := startEvent.GetExecutionStarted().GetScheduledStartTimestamp(); ts != nil {
+		start = ptr.Of(ts.AsTime())
+	}
+
 	// Schedule a reminder to execute immediately after this operation. The reminder will trigger the actual
 	// workflow execution. This is preferable to using the current thread so that we don't block the client
 	// while the workflow logic is running.
-	if _, err := o.createReminder(ctx, "start", nil, 0); err != nil {
+	if _, err := o.createReminder(ctx, "start", nil, start, o.appID); err != nil {
 		return err
 	}
 
