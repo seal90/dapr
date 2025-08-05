@@ -36,7 +36,7 @@ var errRetryOnStreamingRPC = status.Error(codes.FailedPrecondition, "cannot use 
 
 type replayBufferCh chan *codec.Frame
 
-type getPolicyFn func(appID, methodName string) *resiliency.PolicyDefinition
+type getPolicyFn func(appID, methodName string, nrData map[string]string) *resiliency.PolicyDefinition
 
 // RegisterService sets up a proxy handler for a particular gRPC service and method.
 // The behaviour is the same as if you were registering a handler method, e.g. from a codegenerated pb.go file.
@@ -99,13 +99,18 @@ func (s *handler) handler(srv any, serverStream grpc.ServerStream) error {
 	md, _ := metadata.FromIncomingContext(ctx)
 	v := md[diagConsts.GRPCProxyAppIDKey]
 
+	nrData := make(map[string]string)
+	if nstags, exists := md["virtual-namespace"]; exists {
+		nrData["virtual-namespace"] = nstags[0]
+	}
+
 	// The app id check is handled in the StreamDirector. If we don't have it here, we just use a NoOp policy since we know the request is impossible.
 	var policyDef *resiliency.PolicyDefinition
 	var grpcDestinationAppID string
 	if len(v) == 0 || s.getPolicyFn == nil {
 		policyDef = resiliency.NoOp{}.EndpointPolicy("", "")
 	} else {
-		policyDef = s.getPolicyFn(v[0], fullMethodName)
+		policyDef = s.getPolicyFn(v[0], fullMethodName, nrData)
 		grpcDestinationAppID = v[0]
 	}
 
@@ -156,7 +161,7 @@ func (s *handler) handler(srv any, serverStream grpc.ServerStream) error {
 		}
 
 		// We require that the director's returned context inherits from the server stream's context (directly or through ctx)
-		outgoingCtx, backendConn, target, teardown, err := s.director(ctx, fullMethodName)
+		outgoingCtx, backendConn, target, teardown, err := s.director(ctx, fullMethodName, nrData)
 		// Do not "defer teardown(false)" yet, in case we need to proxy a stream
 		if err != nil {
 			teardown(false)
