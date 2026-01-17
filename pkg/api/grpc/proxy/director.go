@@ -22,7 +22,7 @@ import (
 // are invoked. So decisions around authorization, monitoring etc. are better to be handled there.
 //
 // See the rather rich example.
-type StreamDirector func(ctx context.Context, fullMethodName string) (context.Context, *grpc.ClientConn, *ProxyTarget, func(destroy bool), error)
+type StreamDirector func(ctx context.Context, fullMethodName string, nrData map[string]string) (context.Context, *grpc.ClientConn, *ProxyTarget, func(destroy bool), error)
 
 // ProxyTarget is an object that describes the network and service identification of a remote Dapr process
 type ProxyTarget struct {

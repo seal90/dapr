@@ -151,7 +151,13 @@ func (d *directMessaging) Close() error {
 
 // Invoke takes a message requests and invokes an app, either local or remote.
 func (d *directMessaging) Invoke(ctx context.Context, targetAppID string, req *invokev1.InvokeMethodRequest) (*invokev1.InvokeMethodResponse, error) {
-	app, err := d.getRemoteApp(targetAppID)
+	nrData := make(map[string]string)
+	md := req.Metadata()
+	for key, val := range md {
+		nrData[strings.ToLower(key)] = val.Values[0]
+	}
+
+	app, err := d.getRemoteApp(targetAppID, nrData)
 	if err != nil {
 		return nil, err
 	}
@@ -580,7 +586,7 @@ func (d *directMessaging) addForwardedHeadersToMetadata(req *invokev1.InvokeMeth
 	addOrCreate("Forwarded", forwardedHeaderValue)
 }
 
-func (d *directMessaging) getRemoteApp(appID string) (res remoteApp, err error) {
+func (d *directMessaging) getRemoteApp(appID string, nrData map[string]string) (res remoteApp, err error) {
 	res.id, res.namespace, err = d.requestAppIDAndNamespace(appID)
 	if err != nil {
 		return res, err
@@ -603,6 +609,7 @@ func (d *directMessaging) getRemoteApp(appID string) (res remoteApp, err error) 
 			ID:        res.id,
 			Namespace: res.namespace,
 			Port:      d.grpcPort,
+			Data:      nrData,
 		}
 
 		// If the component implements ResolverMulti, we can use caching
